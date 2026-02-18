@@ -23,6 +23,8 @@ public sealed class GameplayController : MonoBehaviour
     [SerializeField] private int gridHeight = 120;
 
     private ToolType selectedTool = ToolType.Brush;
+    private int currentLevelIndex;
+    private RestoreLevelConfig currentLevelConfig;
 
     private Texture2D cleanTexture;
     private Texture2D dirtTexture;
@@ -61,9 +63,15 @@ public sealed class GameplayController : MonoBehaviour
     {
         gridWidth = Mathf.Max(32, gridWidth);
         gridHeight = Mathf.Max(32, gridHeight);
-        winCleanPercent = Mathf.Clamp(winCleanPercent, 0.2f, 0.99f);
 
-        InitializeObjectAndTextures();
+        currentLevelIndex = Mathf.Clamp(GameRunState.CurrentLevelIndex, 0, GameRunState.HighestUnlockedLevelIndex);
+        currentLevelIndex = Mathf.Clamp(currentLevelIndex, 0, RestoreLevelCatalog.Count - 1);
+        GameRunState.SetCurrentLevel(currentLevelIndex);
+        currentLevelConfig = RestoreLevelCatalog.GetByIndex(currentLevelIndex);
+        roundDurationSeconds = currentLevelConfig.DurationSeconds;
+        winCleanPercent = Mathf.Clamp(currentLevelConfig.TargetCleanPercent, 0.2f, 0.99f);
+
+        InitializeObjectAndTextures(currentLevelConfig.ObjectStyle);
         BuildUi();
 
         timeLeft = roundDurationSeconds;
@@ -110,7 +118,7 @@ public sealed class GameplayController : MonoBehaviour
         }
     }
 
-    private void InitializeObjectAndTextures()
+    private void InitializeObjectAndTextures(RestoreObjectStyle objectStyle)
     {
         var count = gridWidth * gridHeight;
         dirtValues = new float[count];
@@ -128,15 +136,15 @@ public sealed class GameplayController : MonoBehaviour
                 var nx = ((x + 0.5f) / gridWidth) * 2f - 1f;
                 var ny = ((y + 0.5f) / gridHeight) * 2f - 1f;
 
-                var inObject = IsInsideObjectShape(nx, ny);
+                var inObject = IsInsideObjectShape(nx, ny, objectStyle);
                 objectMask[index] = inObject;
 
                 if (inObject)
                 {
                     dirtValues[index] = 1f;
                     maxDirt += 1f;
-                    cleanPixels[index] = BuildCleanPixel(nx, ny);
-                    dirtBasePixels[index] = BuildDirtBasePixel(x, y);
+                    cleanPixels[index] = BuildCleanPixel(nx, ny, objectStyle);
+                    dirtBasePixels[index] = BuildDirtBasePixel(x, y, objectStyle);
                 }
                 else
                 {
@@ -161,22 +169,80 @@ public sealed class GameplayController : MonoBehaviour
         RebuildDirtTexture();
     }
 
-    private static bool IsInsideObjectShape(float nx, float ny)
+    private static bool IsInsideObjectShape(float nx, float ny, RestoreObjectStyle objectStyle)
     {
-        var body = (nx * nx) / 0.50f + ((ny + 0.05f) * (ny + 0.05f)) / 0.78f <= 1f;
-        var neck = Mathf.Abs(nx) < 0.24f && ny > 0.28f && ny < 0.86f;
-        var lip = Mathf.Abs(nx) < 0.34f && ny > 0.82f && ny < 0.96f;
-        var handleEllipse = ((nx - 0.66f) * (nx - 0.66f)) / 0.08f + ((ny - 0.1f) * (ny - 0.1f)) / 0.18f <= 1f;
-        var handleHole = ((nx - 0.66f) * (nx - 0.66f)) / 0.035f + ((ny - 0.1f) * (ny - 0.1f)) / 0.08f <= 1f;
-        var handle = handleEllipse && !handleHole;
-
-        return body || neck || lip || handle;
+        switch (objectStyle)
+        {
+            case RestoreObjectStyle.Plate:
+            {
+                var outer = (nx * nx) / 0.88f + (ny * ny) / 0.88f <= 1f;
+                var innerHole = (nx * nx) / 0.24f + (ny * ny) / 0.24f <= 1f;
+                var rim = outer && !innerHole;
+                var center = (nx * nx) / 0.34f + (ny * ny) / 0.34f <= 1f;
+                return rim || center;
+            }
+            case RestoreObjectStyle.Vase:
+            {
+                var top = Mathf.Abs(nx) < Mathf.Lerp(0.15f, 0.28f, Mathf.InverseLerp(0.2f, 0.95f, ny));
+                var body = (nx * nx) / Mathf.Lerp(0.2f, 0.75f, Mathf.InverseLerp(-1f, 0.2f, ny)) + ((ny + 0.12f) * (ny + 0.12f)) / 0.9f <= 1f;
+                return (ny > 0.2f && top) || body;
+            }
+            case RestoreObjectStyle.ToyDuck:
+            {
+                var body = ((nx + 0.08f) * (nx + 0.08f)) / 0.58f + ((ny + 0.06f) * (ny + 0.06f)) / 0.52f <= 1f;
+                var head = ((nx - 0.36f) * (nx - 0.36f)) / 0.11f + ((ny + 0.32f) * (ny + 0.32f)) / 0.12f <= 1f;
+                var beak = nx > 0.48f && nx < 0.72f && ny > 0.16f && ny < 0.35f;
+                return body || head || beak;
+            }
+            case RestoreObjectStyle.RobotHead:
+            {
+                var head = Mathf.Abs(nx) < 0.62f && Mathf.Abs(ny) < 0.62f;
+                var antenna = Mathf.Abs(nx) < 0.07f && ny > 0.62f && ny < 0.92f;
+                var earLeft = nx < -0.62f && nx > -0.82f && Mathf.Abs(ny) < 0.18f;
+                var earRight = nx > 0.62f && nx < 0.82f && Mathf.Abs(ny) < 0.18f;
+                return head || antenna || earLeft || earRight;
+            }
+            default:
+            {
+                var body = (nx * nx) / 0.50f + ((ny + 0.05f) * (ny + 0.05f)) / 0.78f <= 1f;
+                var neck = Mathf.Abs(nx) < 0.24f && ny > 0.28f && ny < 0.86f;
+                var lip = Mathf.Abs(nx) < 0.34f && ny > 0.82f && ny < 0.96f;
+                var handleEllipse = ((nx - 0.66f) * (nx - 0.66f)) / 0.08f + ((ny - 0.1f) * (ny - 0.1f)) / 0.18f <= 1f;
+                var handleHole = ((nx - 0.66f) * (nx - 0.66f)) / 0.035f + ((ny - 0.1f) * (ny - 0.1f)) / 0.08f <= 1f;
+                var handle = handleEllipse && !handleHole;
+                return body || neck || lip || handle;
+            }
+        }
     }
 
-    private static Color BuildCleanPixel(float nx, float ny)
+    private static Color BuildCleanPixel(float nx, float ny, RestoreObjectStyle objectStyle)
     {
-        var topColor = new Color(0.86f, 0.94f, 1f, 1f);
-        var bottomColor = new Color(0.56f, 0.72f, 0.9f, 1f);
+        Color topColor;
+        Color bottomColor;
+        switch (objectStyle)
+        {
+            case RestoreObjectStyle.Plate:
+                topColor = new Color(0.95f, 0.94f, 0.89f, 1f);
+                bottomColor = new Color(0.82f, 0.79f, 0.7f, 1f);
+                break;
+            case RestoreObjectStyle.Vase:
+                topColor = new Color(0.85f, 0.98f, 0.87f, 1f);
+                bottomColor = new Color(0.52f, 0.76f, 0.6f, 1f);
+                break;
+            case RestoreObjectStyle.ToyDuck:
+                topColor = new Color(1f, 0.95f, 0.52f, 1f);
+                bottomColor = new Color(0.95f, 0.73f, 0.18f, 1f);
+                break;
+            case RestoreObjectStyle.RobotHead:
+                topColor = new Color(0.87f, 0.9f, 0.94f, 1f);
+                bottomColor = new Color(0.55f, 0.6f, 0.68f, 1f);
+                break;
+            default:
+                topColor = new Color(0.86f, 0.94f, 1f, 1f);
+                bottomColor = new Color(0.56f, 0.72f, 0.9f, 1f);
+                break;
+        }
+
         var vertical = Mathf.InverseLerp(-1f, 1f, ny);
         var color = Color.Lerp(bottomColor, topColor, vertical);
 
@@ -189,11 +255,38 @@ public sealed class GameplayController : MonoBehaviour
         return color;
     }
 
-    private static Color BuildDirtBasePixel(int x, int y)
+    private static Color BuildDirtBasePixel(int x, int y, RestoreObjectStyle objectStyle)
     {
         var noiseA = Mathf.PerlinNoise((x + 13f) * 0.11f, (y + 47f) * 0.11f);
         var noiseB = Mathf.PerlinNoise((x + 5f) * 0.27f, (y + 17f) * 0.27f);
-        var tone = Color.Lerp(new Color(0.12f, 0.08f, 0.06f, 1f), new Color(0.24f, 0.16f, 0.11f, 1f), noiseA);
+
+        Color dirtDark;
+        Color dirtLight;
+        switch (objectStyle)
+        {
+            case RestoreObjectStyle.Plate:
+                dirtDark = new Color(0.18f, 0.14f, 0.1f, 1f);
+                dirtLight = new Color(0.32f, 0.25f, 0.16f, 1f);
+                break;
+            case RestoreObjectStyle.Vase:
+                dirtDark = new Color(0.1f, 0.14f, 0.09f, 1f);
+                dirtLight = new Color(0.2f, 0.29f, 0.15f, 1f);
+                break;
+            case RestoreObjectStyle.ToyDuck:
+                dirtDark = new Color(0.23f, 0.15f, 0.09f, 1f);
+                dirtLight = new Color(0.39f, 0.25f, 0.12f, 1f);
+                break;
+            case RestoreObjectStyle.RobotHead:
+                dirtDark = new Color(0.09f, 0.1f, 0.12f, 1f);
+                dirtLight = new Color(0.2f, 0.22f, 0.26f, 1f);
+                break;
+            default:
+                dirtDark = new Color(0.12f, 0.08f, 0.06f, 1f);
+                dirtLight = new Color(0.24f, 0.16f, 0.11f, 1f);
+                break;
+        }
+
+        var tone = Color.Lerp(dirtDark, dirtLight, noiseA);
         var alpha = Mathf.Lerp(0.76f, 1f, noiseB);
         tone.a = alpha;
         return tone;
@@ -223,7 +316,7 @@ public sealed class GameplayController : MonoBehaviour
         var objectiveText = RuntimeUiFactory.CreateText(
             canvas.transform,
             "ObjectiveText",
-            "Restore the object: clean at least 82%",
+            $"{currentLevelConfig.Name} - clean at least {winCleanPercent * 100f:0}%",
             38,
             TextAnchor.MiddleCenter,
             new Color(0.93f, 0.96f, 1f, 1f));
@@ -241,7 +334,7 @@ public sealed class GameplayController : MonoBehaviour
             new Vector2(235f, -250f),
             new Color(0.1f, 0.14f, 0.2f, 0.94f));
 
-        var titleText = RuntimeUiFactory.CreateText(hudPanel, "Title", "Restore Run", 40, TextAnchor.MiddleLeft, Color.white);
+        var titleText = RuntimeUiFactory.CreateText(hudPanel, "Title", $"Level {currentLevelIndex + 1}", 40, TextAnchor.MiddleLeft, Color.white);
         titleText.rectTransform.anchorMin = new Vector2(0f, 1f);
         titleText.rectTransform.anchorMax = new Vector2(1f, 1f);
         titleText.rectTransform.sizeDelta = new Vector2(-36f, 54f);
@@ -633,10 +726,18 @@ public sealed class GameplayController : MonoBehaviour
         }
 
         roundEnded = true;
+        GameRunState.LastLevelIndex = currentLevelIndex;
+        GameRunState.LastLevelName = currentLevelConfig.Name;
         GameRunState.LastRunWon = won;
         GameRunState.LastActions = strokeCount;
         GameRunState.LastDurationSeconds = Time.time - roundStartTime;
         GameRunState.LastCleanPercent = GetCleanPercent();
+
+        if (won)
+        {
+            GameRunState.UnlockLevel(currentLevelIndex + 1);
+        }
+
         SceneManager.LoadScene(SceneNames.Results);
     }
 }
