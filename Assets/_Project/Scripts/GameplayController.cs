@@ -50,6 +50,8 @@ public sealed class GameplayController : MonoBehaviour
     private float maxDirt;
 
     private int strokeCount;
+    private int comboStreak;
+    private int bestCombo;
     private float timeLeft;
     private float roundStartTime;
     private bool roundEnded;
@@ -61,6 +63,7 @@ public sealed class GameplayController : MonoBehaviour
     private Text timeText;
     private Text progressText;
     private Text strokesText;
+    private Text comboText;
     private Text toolHintText;
     private Text dirtTypeText;
     private RawImage cleanSurfaceImage;
@@ -421,13 +424,19 @@ public sealed class GameplayController : MonoBehaviour
         strokesText.rectTransform.sizeDelta = new Vector2(-36f, 44f);
         strokesText.rectTransform.anchoredPosition = new Vector2(14f, -170f);
 
+        comboText = RuntimeUiFactory.CreateText(hudPanel, "ComboText", string.Empty, 28, TextAnchor.MiddleLeft, new Color(1f, 0.88f, 0.45f, 1f));
+        comboText.rectTransform.anchorMin = new Vector2(0f, 1f);
+        comboText.rectTransform.anchorMax = new Vector2(1f, 1f);
+        comboText.rectTransform.sizeDelta = new Vector2(-36f, 40f);
+        comboText.rectTransform.anchoredPosition = new Vector2(14f, -212f);
+
         var progressBarBg = RuntimeUiFactory.CreatePanel(
             hudPanel,
             "ProgressBarBg",
             new Vector2(0f, 1f),
             new Vector2(1f, 1f),
             new Vector2(-40f, 22f),
-            new Vector2(0f, -214f),
+            new Vector2(0f, -252f),
             new Color(0.22f, 0.28f, 0.36f, 1f));
 
         var progressFill = RuntimeUiFactory.CreatePanel(
@@ -557,6 +566,7 @@ public sealed class GameplayController : MonoBehaviour
         timeText.text = $"Time: {timeLeft:0.0}s";
         progressText.text = $"Cleaned: {PermilleToPercentValue(cleanPermille):0.0}% / {PermilleToPercentValue(targetPermille):0.0}%";
         strokesText.text = $"Strokes: {strokeCount}";
+        comboText.text = $"Combo: x{Mathf.Max(0, comboStreak)}";
         toolHintText.text = GetToolHint(selectedTool);
 
         if (progressFillRect != null)
@@ -609,7 +619,7 @@ public sealed class GameplayController : MonoBehaviour
         if (pointerBegan && pointerInside)
         {
             strokeCount++;
-            ApplyWrongToolPenalty(pointerScreen);
+            ProcessStrokeStart(pointerScreen);
             if (!tutorialDismissed)
             {
                 tutorialDismissed = true;
@@ -624,7 +634,7 @@ public sealed class GameplayController : MonoBehaviour
         else if (pointerDown && !pointerWasDown && pointerInside)
         {
             strokeCount++;
-            ApplyWrongToolPenalty(pointerScreen);
+            ProcessStrokeStart(pointerScreen);
             RefreshHud();
         }
 
@@ -646,7 +656,8 @@ public sealed class GameplayController : MonoBehaviour
         }
 
         GetToolSettings(out var radiusCells, out var cleanPerSecond);
-        var cleanPower = cleanPerSecond * Time.deltaTime;
+        var comboBoost = 1f + (Mathf.Clamp(comboStreak - 1, 0, 10) * 0.05f);
+        var cleanPower = cleanPerSecond * comboBoost * Time.deltaTime;
         if (cleanPower <= 0f)
         {
             return;
@@ -705,7 +716,7 @@ public sealed class GameplayController : MonoBehaviour
         }
     }
 
-    private void ApplyWrongToolPenalty(Vector2 pointerScreen)
+    private void ProcessStrokeStart(Vector2 pointerScreen)
     {
         if (!TryGetGridCoordinates(pointerScreen, out var centerX, out var centerY))
         {
@@ -725,9 +736,12 @@ public sealed class GameplayController : MonoBehaviour
 
         if (GetToolEffectiveness(selectedTool, dirtTypes[index]) >= 1f)
         {
+            comboStreak = Mathf.Min(comboStreak + 1, 20);
+            bestCombo = Mathf.Max(bestCombo, comboStreak);
             return;
         }
 
+        comboStreak = 0;
         timeLeft = Mathf.Max(0f, timeLeft - WrongToolTimePenaltySeconds);
         wrongToolHintTimer = 1.15f;
     }
@@ -960,6 +974,7 @@ public sealed class GameplayController : MonoBehaviour
         var finalCleanPercent = GetCleanPermille() / (float)PercentPermilleScale;
         var starsEarned = 0;
         var coinReward = 0;
+        var comboBonusCoins = 0;
         GameRunState.LastLevelIndex = currentLevelIndex;
         GameRunState.LastLevelName = currentLevelConfig.Name;
         GameRunState.LastRunWon = won;
@@ -970,13 +985,16 @@ public sealed class GameplayController : MonoBehaviour
         if (won)
         {
             starsEarned = CalculateStars(finalCleanPercent, currentLevelConfig.TargetCleanPercent);
-            coinReward = CalculateCoinReward(starsEarned);
+            comboBonusCoins = CalculateComboBonusCoins(bestCombo);
+            coinReward = CalculateCoinReward(starsEarned) + comboBonusCoins;
             GameRunState.UpdateLevelStars(currentLevelIndex, starsEarned);
             GameRunState.AddCoins(coinReward);
             GameRunState.UnlockLevel(currentLevelIndex + 1);
         }
 
         GameRunState.LastRunStars = starsEarned;
+        GameRunState.LastBestCombo = bestCombo;
+        GameRunState.LastComboBonusCoins = comboBonusCoins;
         GameRunState.LastRunCoinReward = coinReward;
         SceneManager.LoadScene(SceneNames.Results);
     }
@@ -1009,5 +1027,15 @@ public sealed class GameplayController : MonoBehaviour
         }
 
         return 40 + (currentLevelIndex * 12) + (starsEarned * 20);
+    }
+
+    private int CalculateComboBonusCoins(int bestComboInRun)
+    {
+        if (bestComboInRun < 3)
+        {
+            return 0;
+        }
+
+        return (bestComboInRun - 2) * 8;
     }
 }

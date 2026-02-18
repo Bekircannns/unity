@@ -21,6 +21,8 @@ public static class GameRunState
     public static float LastCleanPercent;
     public static int LastRunStars;
     public static int LastRunCoinReward;
+    public static int LastBestCombo;
+    public static int LastComboBonusCoins;
 
     private static int[] starsByLevel = new int[0];
 
