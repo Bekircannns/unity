@@ -686,7 +686,7 @@ public sealed class GameplayController : MonoBehaviour
                 break;
             default:
                 radiusCells = 7;
-                cleanPerSecond = 3.6f;
+                cleanPerSecond = 3.6f * GameRunState.GetBrushPowerMultiplier();
                 break;
         }
     }
@@ -744,18 +744,57 @@ public sealed class GameplayController : MonoBehaviour
         }
 
         roundEnded = true;
+        var finalCleanPercent = GetCleanPermille() / (float)PercentPermilleScale;
+        var starsEarned = 0;
+        var coinReward = 0;
         GameRunState.LastLevelIndex = currentLevelIndex;
         GameRunState.LastLevelName = currentLevelConfig.Name;
         GameRunState.LastRunWon = won;
         GameRunState.LastActions = strokeCount;
         GameRunState.LastDurationSeconds = Time.time - roundStartTime;
-        GameRunState.LastCleanPercent = GetCleanPermille() / (float)PercentPermilleScale;
+        GameRunState.LastCleanPercent = finalCleanPercent;
 
         if (won)
         {
+            starsEarned = CalculateStars(finalCleanPercent, currentLevelConfig.TargetCleanPercent);
+            coinReward = CalculateCoinReward(starsEarned);
+            GameRunState.UpdateLevelStars(currentLevelIndex, starsEarned);
+            GameRunState.AddCoins(coinReward);
             GameRunState.UnlockLevel(currentLevelIndex + 1);
         }
 
+        GameRunState.LastRunStars = starsEarned;
+        GameRunState.LastRunCoinReward = coinReward;
         SceneManager.LoadScene(SceneNames.Results);
+    }
+
+    private int CalculateStars(float cleanPercent, float targetPercent)
+    {
+        if (cleanPercent < targetPercent)
+        {
+            return 0;
+        }
+
+        if (cleanPercent >= targetPercent + 0.15f)
+        {
+            return 3;
+        }
+
+        if (cleanPercent >= targetPercent + 0.07f)
+        {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    private int CalculateCoinReward(int starsEarned)
+    {
+        if (starsEarned <= 0)
+        {
+            return 0;
+        }
+
+        return 40 + (currentLevelIndex * 12) + (starsEarned * 20);
     }
 }

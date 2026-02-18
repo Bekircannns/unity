@@ -7,6 +7,8 @@ public sealed class ResultsController : MonoBehaviour
     private Canvas canvas;
     private Text levelText;
     private Text statusText;
+    private Text starsText;
+    private Text coinText;
     private Text actionsText;
     private Text cleanedText;
     private Text durationText;
@@ -45,7 +47,7 @@ public sealed class ResultsController : MonoBehaviour
             "Card",
             new Vector2(0.5f, 0.5f),
             new Vector2(0.5f, 0.5f),
-            new Vector2(760f, 760f),
+            new Vector2(760f, 820f),
             new Vector2(0f, 20f),
             new Color(0.1f, 0.14f, 0.2f, 0.92f));
 
@@ -67,23 +69,35 @@ public sealed class ResultsController : MonoBehaviour
         statusText.rectTransform.sizeDelta = new Vector2(0f, 56f);
         statusText.rectTransform.anchoredPosition = new Vector2(0f, -146f);
 
+        starsText = RuntimeUiFactory.CreateText(card, "Stars", string.Empty, 34, TextAnchor.MiddleCenter, new Color(1f, 0.91f, 0.55f, 1f));
+        starsText.rectTransform.anchorMin = new Vector2(0.08f, 1f);
+        starsText.rectTransform.anchorMax = new Vector2(0.92f, 1f);
+        starsText.rectTransform.sizeDelta = new Vector2(0f, 54f);
+        starsText.rectTransform.anchoredPosition = new Vector2(0f, -204f);
+
+        coinText = RuntimeUiFactory.CreateText(card, "Coins", string.Empty, 34, TextAnchor.MiddleCenter, new Color(0.87f, 0.94f, 1f, 1f));
+        coinText.rectTransform.anchorMin = new Vector2(0.08f, 1f);
+        coinText.rectTransform.anchorMax = new Vector2(0.92f, 1f);
+        coinText.rectTransform.sizeDelta = new Vector2(0f, 54f);
+        coinText.rectTransform.anchoredPosition = new Vector2(0f, -262f);
+
         actionsText = RuntimeUiFactory.CreateText(card, "Actions", string.Empty, 34, TextAnchor.MiddleCenter, new Color(0.84f, 0.9f, 1f, 1f));
         actionsText.rectTransform.anchorMin = new Vector2(0.08f, 1f);
         actionsText.rectTransform.anchorMax = new Vector2(0.92f, 1f);
         actionsText.rectTransform.sizeDelta = new Vector2(0f, 54f);
-        actionsText.rectTransform.anchoredPosition = new Vector2(0f, -208f);
+        actionsText.rectTransform.anchoredPosition = new Vector2(0f, -320f);
 
         cleanedText = RuntimeUiFactory.CreateText(card, "Cleaned", string.Empty, 34, TextAnchor.MiddleCenter, new Color(0.84f, 0.9f, 1f, 1f));
         cleanedText.rectTransform.anchorMin = new Vector2(0.08f, 1f);
         cleanedText.rectTransform.anchorMax = new Vector2(0.92f, 1f);
         cleanedText.rectTransform.sizeDelta = new Vector2(0f, 54f);
-        cleanedText.rectTransform.anchoredPosition = new Vector2(0f, -266f);
+        cleanedText.rectTransform.anchoredPosition = new Vector2(0f, -376f);
 
         durationText = RuntimeUiFactory.CreateText(card, "Duration", string.Empty, 34, TextAnchor.MiddleCenter, new Color(0.84f, 0.9f, 1f, 1f));
         durationText.rectTransform.anchorMin = new Vector2(0.08f, 1f);
         durationText.rectTransform.anchorMax = new Vector2(0.92f, 1f);
         durationText.rectTransform.sizeDelta = new Vector2(0f, 54f);
-        durationText.rectTransform.anchoredPosition = new Vector2(0f, -322f);
+        durationText.rectTransform.anchoredPosition = new Vector2(0f, -432f);
 
         var retryButton = RuntimeUiFactory.CreateButton(card, "RetryButton", "Retry Level", RetryLevel);
         var retryRect = retryButton.GetComponent<RectTransform>();
@@ -112,6 +126,8 @@ public sealed class ResultsController : MonoBehaviour
         levelText.text = GameRunState.LastLevelName;
         statusText.text = GameRunState.LastRunWon ? "Status: WIN" : "Status: FAIL";
         statusText.color = GameRunState.LastRunWon ? new Color(0.54f, 0.92f, 0.7f, 1f) : new Color(1f, 0.56f, 0.56f, 1f);
+        starsText.text = $"Stars: {BuildStarsLine(GameRunState.LastRunStars)}";
+        coinText.text = $"Coins: +{GameRunState.LastRunCoinReward}   (Total: {GameRunState.Coins})";
         actionsText.text = $"Actions: {GameRunState.LastActions}";
         cleanedText.text = $"Cleaned: {GameRunState.LastCleanPercent * 100f:0.0}%";
         durationText.text = $"Duration: {GameRunState.LastDurationSeconds:0.0}s";
@@ -148,5 +164,11 @@ public sealed class ResultsController : MonoBehaviour
     private static void BackToMenu()
     {
         SceneManager.LoadScene(SceneNames.Menu);
+    }
+
+    private static string BuildStarsLine(int stars)
+    {
+        var safeStars = Mathf.Clamp(stars, 0, 3);
+        return new string('*', safeStars) + new string('-', 3 - safeStars);
     }
 }
