@@ -7,6 +7,8 @@ using UnityEngine.InputSystem;
 
 public sealed class GameplayController : MonoBehaviour
 {
+    private const int PercentPermilleScale = 1000;
+
     private enum ToolType
     {
         Brush,
@@ -88,7 +90,7 @@ public sealed class GameplayController : MonoBehaviour
 
         HandlePointerInput();
 
-        if (GetCleanPercent() >= winCleanPercent)
+        if (GetCleanPermille() >= GetTargetPermille())
         {
             EndRound(true);
             return;
@@ -316,7 +318,7 @@ public sealed class GameplayController : MonoBehaviour
         var objectiveText = RuntimeUiFactory.CreateText(
             canvas.transform,
             "ObjectiveText",
-            $"{currentLevelConfig.Name} - clean at least {winCleanPercent * 100f:0}%",
+            $"{currentLevelConfig.Name} - clean at least {PermilleToPercentValue(GetTargetPermille()):0.0}%",
             38,
             TextAnchor.MiddleCenter,
             new Color(0.93f, 0.96f, 1f, 1f));
@@ -477,15 +479,16 @@ public sealed class GameplayController : MonoBehaviour
 
     private void RefreshHud()
     {
-        var cleanPercent = GetCleanPercent();
+        var cleanPermille = GetCleanPermille();
+        var targetPermille = GetTargetPermille();
         timeText.text = $"Time: {timeLeft:0.0}s";
-        progressText.text = $"Cleaned: {cleanPercent * 100f:0.0}% / {winCleanPercent * 100f:0.0}%";
+        progressText.text = $"Cleaned: {PermilleToPercentValue(cleanPermille):0.0}% / {PermilleToPercentValue(targetPermille):0.0}%";
         strokesText.text = $"Strokes: {strokeCount}";
         toolHintText.text = GetToolHint(selectedTool);
 
         if (progressFillRect != null)
         {
-            progressFillRect.anchorMax = new Vector2(Mathf.Clamp01(cleanPercent), 1f);
+            progressFillRect.anchorMax = new Vector2(Mathf.Clamp01(cleanPermille / (float)PercentPermilleScale), 1f);
         }
     }
 
@@ -654,21 +657,36 @@ public sealed class GameplayController : MonoBehaviour
         return 1f - (totalDirt / maxDirt);
     }
 
+    private int GetCleanPermille()
+    {
+        return Mathf.Clamp(Mathf.RoundToInt(GetCleanPercent() * PercentPermilleScale), 0, PercentPermilleScale);
+    }
+
+    private int GetTargetPermille()
+    {
+        return Mathf.Clamp(Mathf.RoundToInt(winCleanPercent * PercentPermilleScale), 0, PercentPermilleScale);
+    }
+
+    private static float PermilleToPercentValue(int permille)
+    {
+        return permille / 10f;
+    }
+
     private void GetToolSettings(out int radiusCells, out float cleanPerSecond)
     {
         switch (selectedTool)
         {
             case ToolType.Spray:
                 radiusCells = 10;
-                cleanPerSecond = 2.4f;
+                cleanPerSecond = 2.8f;
                 break;
             case ToolType.Scraper:
                 radiusCells = 5;
-                cleanPerSecond = 4.3f;
+                cleanPerSecond = 4.8f;
                 break;
             default:
                 radiusCells = 7;
-                cleanPerSecond = 3.2f;
+                cleanPerSecond = 3.6f;
                 break;
         }
     }
@@ -731,7 +749,7 @@ public sealed class GameplayController : MonoBehaviour
         GameRunState.LastRunWon = won;
         GameRunState.LastActions = strokeCount;
         GameRunState.LastDurationSeconds = Time.time - roundStartTime;
-        GameRunState.LastCleanPercent = GetCleanPercent();
+        GameRunState.LastCleanPercent = GetCleanPermille() / (float)PercentPermilleScale;
 
         if (won)
         {
