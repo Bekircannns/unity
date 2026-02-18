@@ -311,7 +311,8 @@ public sealed class GameplayController : MonoBehaviour
             Vector2.one,
             Vector2.zero,
             Vector2.zero,
-            new Color(0.05f, 0.07f, 0.11f, 1f));
+            new Color(0.05f, 0.07f, 0.11f, 1f),
+            "gameplay_background");
         background.offsetMin = Vector2.zero;
         background.offsetMax = Vector2.zero;
 
@@ -334,7 +335,8 @@ public sealed class GameplayController : MonoBehaviour
             new Vector2(0f, 1f),
             new Vector2(430f, 420f),
             new Vector2(235f, -250f),
-            new Color(0.1f, 0.14f, 0.2f, 0.94f));
+            new Color(0.1f, 0.14f, 0.2f, 0.94f),
+            "gameplay_hud");
 
         var titleText = RuntimeUiFactory.CreateText(hudPanel, "Title", $"Level {currentLevelIndex + 1}", 40, TextAnchor.MiddleLeft, Color.white);
         titleText.rectTransform.anchorMin = new Vector2(0f, 1f);

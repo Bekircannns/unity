@@ -43,3 +43,7 @@ sysinfo.txt
 
 # Accidental nested Unity project folder (root project is this repo)
 RestoreRush/
+
+# Unity automatic recovery workspace
+Assets/_Recovery/
+Assets/_Recovery.meta

@@ -41,7 +41,7 @@ public static class RuntimeUiFactory
         return canvas;
     }
 
-    public static RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, Vector2 anchoredPos, Color color)
+    public static RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, Vector2 anchoredPos, Color color, string panelSkinKey = null)
     {
         var panelObject = new GameObject(name, typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(parent, false);
@@ -53,6 +53,7 @@ public static class RuntimeUiFactory
 
         var image = panelObject.GetComponent<Image>();
         image.color = color;
+        UiTheme.TryApplyPanelSkin(image, panelSkinKey);
         return rect;
     }
 
@@ -88,16 +89,20 @@ public static class RuntimeUiFactory
         buttonObject.transform.SetParent(parent, false);
 
         var buttonImage = buttonObject.GetComponent<Image>();
-        buttonImage.color = new Color(0.11f, 0.16f, 0.25f, 0.95f);
-
         var button = buttonObject.GetComponent<Button>();
-        var colors = button.colors;
-        colors.normalColor = new Color(0.11f, 0.16f, 0.25f, 0.95f);
-        colors.highlightedColor = new Color(0.18f, 0.24f, 0.36f, 1f);
-        colors.pressedColor = new Color(0.08f, 0.12f, 0.2f, 1f);
-        colors.selectedColor = colors.highlightedColor;
-        colors.disabledColor = new Color(0.2f, 0.2f, 0.2f, 0.6f);
-        button.colors = colors;
+
+        if (!UiTheme.TryApplyPrimaryButtonSkin(button, buttonImage))
+        {
+            buttonImage.color = new Color(0.11f, 0.16f, 0.25f, 0.95f);
+            var colors = button.colors;
+            colors.normalColor = new Color(0.11f, 0.16f, 0.25f, 0.95f);
+            colors.highlightedColor = new Color(0.18f, 0.24f, 0.36f, 1f);
+            colors.pressedColor = new Color(0.08f, 0.12f, 0.2f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(0.2f, 0.2f, 0.2f, 0.6f);
+            button.colors = colors;
+        }
+
         button.onClick.AddListener(onClick);
 
         var labelText = CreateText(buttonObject.transform, "Label", label, 34, TextAnchor.MiddleCenter, Color.white);

@@ -39,7 +39,8 @@ public sealed class MenuController : MonoBehaviour
             Vector2.one,
             Vector2.zero,
             Vector2.zero,
-            new Color(0.05f, 0.07f, 0.11f, 1f));
+            new Color(0.05f, 0.07f, 0.11f, 1f),
+            "menu_background");
 
         background.offsetMin = Vector2.zero;
         background.offsetMax = Vector2.zero;
@@ -51,7 +52,8 @@ public sealed class MenuController : MonoBehaviour
             new Vector2(0.5f, 0.5f),
             new Vector2(900f, 1500f),
             new Vector2(0f, 0f),
-            new Color(0.1f, 0.14f, 0.2f, 0.92f));
+            new Color(0.1f, 0.14f, 0.2f, 0.92f),
+            "menu_card");
 
         var title = RuntimeUiFactory.CreateText(card, "Title", "Restore Rush", 74, TextAnchor.UpperCenter, new Color(0.93f, 0.95f, 1f, 1f));
         title.rectTransform.anchorMin = new Vector2(0f, 1f);
