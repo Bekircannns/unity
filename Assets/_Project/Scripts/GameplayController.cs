@@ -22,15 +22,17 @@ public sealed class GameplayController : MonoBehaviour
     [SerializeField] private int gridWidth = 120;
     [SerializeField] private int gridHeight = 120;
 
-    [Header("Visuals")]
-    [SerializeField] private Color dirtyColor = new Color(0.24f, 0.19f, 0.15f, 1f);
-    [SerializeField] private Color cleanColor = new Color(0.87f, 0.91f, 0.95f, 1f);
-
     private ToolType selectedTool = ToolType.Brush;
+
+    private Texture2D cleanTexture;
     private Texture2D dirtTexture;
+
     private float[] dirtValues;
     private bool[] objectMask;
-    private Color[] pixelCache;
+    private Color[] cleanPixels;
+    private Color[] dirtBasePixels;
+    private Color[] dirtPixels;
+
     private float totalDirt;
     private float maxDirt;
 
@@ -46,8 +48,8 @@ public sealed class GameplayController : MonoBehaviour
     private Text progressText;
     private Text strokesText;
     private Text toolHintText;
-    private Text objectiveText;
     private RawImage cleanSurfaceImage;
+    private RawImage dirtSurfaceImage;
     private RectTransform cleanSurfaceRect;
     private Image brushButtonImage;
     private Image sprayButtonImage;
@@ -61,17 +63,7 @@ public sealed class GameplayController : MonoBehaviour
         gridHeight = Mathf.Max(32, gridHeight);
         winCleanPercent = Mathf.Clamp(winCleanPercent, 0.2f, 0.99f);
 
-        dirtValues = new float[gridWidth * gridHeight];
-        objectMask = new bool[dirtValues.Length];
-        pixelCache = new Color[dirtValues.Length];
-
-        BuildObjectMaskAndInitializeDirt();
-
-        dirtTexture = new Texture2D(gridWidth, gridHeight, TextureFormat.RGBA32, false);
-        dirtTexture.wrapMode = TextureWrapMode.Clamp;
-        dirtTexture.filterMode = FilterMode.Bilinear;
-        RebuildTexture();
-
+        InitializeObjectAndTextures();
         BuildUi();
 
         timeLeft = roundDurationSeconds;
@@ -107,16 +99,27 @@ public sealed class GameplayController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (cleanTexture != null)
+        {
+            Destroy(cleanTexture);
+        }
+
         if (dirtTexture != null)
         {
             Destroy(dirtTexture);
         }
     }
 
-    private void BuildObjectMaskAndInitializeDirt()
+    private void InitializeObjectAndTextures()
     {
-        maxDirt = 0f;
+        var count = gridWidth * gridHeight;
+        dirtValues = new float[count];
+        objectMask = new bool[count];
+        cleanPixels = new Color[count];
+        dirtBasePixels = new Color[count];
+        dirtPixels = new Color[count];
 
+        maxDirt = 0f;
         for (var y = 0; y < gridHeight; y++)
         {
             for (var x = 0; x < gridWidth; x++)
@@ -125,21 +128,75 @@ public sealed class GameplayController : MonoBehaviour
                 var nx = ((x + 0.5f) / gridWidth) * 2f - 1f;
                 var ny = ((y + 0.5f) / gridHeight) * 2f - 1f;
 
-                // Rounded "plate/object" silhouette so gameplay reads as object cleaning, not plain square.
-                var ellipse = (nx * nx) / 0.78f + (ny * ny) / 0.92f <= 1f;
-                var topCap = ny > 0.55f && Mathf.Abs(nx) < 0.22f;
-                var inObject = ellipse || topCap;
-
+                var inObject = IsInsideObjectShape(nx, ny);
                 objectMask[index] = inObject;
-                dirtValues[index] = inObject ? 1f : 0f;
+
                 if (inObject)
                 {
+                    dirtValues[index] = 1f;
                     maxDirt += 1f;
+                    cleanPixels[index] = BuildCleanPixel(nx, ny);
+                    dirtBasePixels[index] = BuildDirtBasePixel(x, y);
+                }
+                else
+                {
+                    dirtValues[index] = 0f;
+                    cleanPixels[index] = new Color(0f, 0f, 0f, 0f);
+                    dirtBasePixels[index] = new Color(0f, 0f, 0f, 0f);
                 }
             }
         }
 
         totalDirt = maxDirt;
+
+        cleanTexture = new Texture2D(gridWidth, gridHeight, TextureFormat.RGBA32, false);
+        cleanTexture.wrapMode = TextureWrapMode.Clamp;
+        cleanTexture.filterMode = FilterMode.Bilinear;
+        cleanTexture.SetPixels(cleanPixels);
+        cleanTexture.Apply(false, false);
+
+        dirtTexture = new Texture2D(gridWidth, gridHeight, TextureFormat.RGBA32, false);
+        dirtTexture.wrapMode = TextureWrapMode.Clamp;
+        dirtTexture.filterMode = FilterMode.Bilinear;
+        RebuildDirtTexture();
+    }
+
+    private static bool IsInsideObjectShape(float nx, float ny)
+    {
+        var body = (nx * nx) / 0.50f + ((ny + 0.05f) * (ny + 0.05f)) / 0.78f <= 1f;
+        var neck = Mathf.Abs(nx) < 0.24f && ny > 0.28f && ny < 0.86f;
+        var lip = Mathf.Abs(nx) < 0.34f && ny > 0.82f && ny < 0.96f;
+        var handleEllipse = ((nx - 0.66f) * (nx - 0.66f)) / 0.08f + ((ny - 0.1f) * (ny - 0.1f)) / 0.18f <= 1f;
+        var handleHole = ((nx - 0.66f) * (nx - 0.66f)) / 0.035f + ((ny - 0.1f) * (ny - 0.1f)) / 0.08f <= 1f;
+        var handle = handleEllipse && !handleHole;
+
+        return body || neck || lip || handle;
+    }
+
+    private static Color BuildCleanPixel(float nx, float ny)
+    {
+        var topColor = new Color(0.86f, 0.94f, 1f, 1f);
+        var bottomColor = new Color(0.56f, 0.72f, 0.9f, 1f);
+        var vertical = Mathf.InverseLerp(-1f, 1f, ny);
+        var color = Color.Lerp(bottomColor, topColor, vertical);
+
+        var radial = Mathf.Clamp01(1f - Mathf.Sqrt(Mathf.Max(0f, (nx * nx) / 0.9f + (ny * ny) / 1.05f)));
+        color *= Mathf.Lerp(0.68f, 1.14f, radial);
+
+        var highlight = Mathf.Exp(-((nx + 0.22f) * (nx + 0.22f) / 0.05f + (ny - 0.18f) * (ny - 0.18f) / 0.09f));
+        color = Color.Lerp(color, new Color(0.98f, 0.995f, 1f, 1f), highlight * 0.36f);
+        color.a = 1f;
+        return color;
+    }
+
+    private static Color BuildDirtBasePixel(int x, int y)
+    {
+        var noiseA = Mathf.PerlinNoise((x + 13f) * 0.11f, (y + 47f) * 0.11f);
+        var noiseB = Mathf.PerlinNoise((x + 5f) * 0.27f, (y + 17f) * 0.27f);
+        var tone = Color.Lerp(new Color(0.12f, 0.08f, 0.06f, 1f), new Color(0.24f, 0.16f, 0.11f, 1f), noiseA);
+        var alpha = Mathf.Lerp(0.76f, 1f, noiseB);
+        tone.a = alpha;
+        return tone;
     }
 
     private void BuildUi()
@@ -163,16 +220,16 @@ public sealed class GameplayController : MonoBehaviour
         background.offsetMin = Vector2.zero;
         background.offsetMax = Vector2.zero;
 
-        objectiveText = RuntimeUiFactory.CreateText(
+        var objectiveText = RuntimeUiFactory.CreateText(
             canvas.transform,
             "ObjectiveText",
-            "Clean to 82% before time ends",
+            "Restore the object: clean at least 82%",
             38,
             TextAnchor.MiddleCenter,
             new Color(0.93f, 0.96f, 1f, 1f));
         objectiveText.rectTransform.anchorMin = new Vector2(0.5f, 1f);
         objectiveText.rectTransform.anchorMax = new Vector2(0.5f, 1f);
-        objectiveText.rectTransform.sizeDelta = new Vector2(950f, 60f);
+        objectiveText.rectTransform.sizeDelta = new Vector2(980f, 60f);
         objectiveText.rectTransform.anchoredPosition = new Vector2(0f, -44f);
 
         var hudPanel = RuntimeUiFactory.CreatePanel(
@@ -273,19 +330,27 @@ public sealed class GameplayController : MonoBehaviour
         var frameImage = surfaceRoot.GetComponent<Image>();
         frameImage.color = new Color(0.16f, 0.2f, 0.27f, 1f);
 
-        var surfaceImageObject = new GameObject("CleanSurfaceImage", typeof(RectTransform), typeof(RawImage));
-        surfaceImageObject.transform.SetParent(surfaceRoot.transform, false);
-        cleanSurfaceRect = surfaceImageObject.GetComponent<RectTransform>();
+        var cleanLayerObject = new GameObject("CleanLayer", typeof(RectTransform), typeof(RawImage));
+        cleanLayerObject.transform.SetParent(surfaceRoot.transform, false);
+        var cleanLayerRect = cleanLayerObject.GetComponent<RectTransform>();
+        cleanLayerRect.anchorMin = Vector2.zero;
+        cleanLayerRect.anchorMax = Vector2.one;
+        cleanLayerRect.offsetMin = new Vector2(12f, 12f);
+        cleanLayerRect.offsetMax = new Vector2(-12f, -12f);
+        cleanSurfaceImage = cleanLayerObject.GetComponent<RawImage>();
+        cleanSurfaceImage.texture = cleanTexture;
+        cleanSurfaceImage.raycastTarget = false;
+
+        var dirtLayerObject = new GameObject("DirtLayer", typeof(RectTransform), typeof(RawImage));
+        dirtLayerObject.transform.SetParent(surfaceRoot.transform, false);
+        cleanSurfaceRect = dirtLayerObject.GetComponent<RectTransform>();
         cleanSurfaceRect.anchorMin = Vector2.zero;
         cleanSurfaceRect.anchorMax = Vector2.one;
         cleanSurfaceRect.offsetMin = new Vector2(12f, 12f);
         cleanSurfaceRect.offsetMax = new Vector2(-12f, -12f);
-
-        cleanSurfaceImage = surfaceImageObject.GetComponent<RawImage>();
-        cleanSurfaceImage.texture = dirtTexture;
-        cleanSurfaceImage.uvRect = new Rect(0f, 0f, 1f, 1f);
-        cleanSurfaceImage.color = Color.white;
-        cleanSurfaceImage.raycastTarget = false;
+        dirtSurfaceImage = dirtLayerObject.GetComponent<RawImage>();
+        dirtSurfaceImage.texture = dirtTexture;
+        dirtSurfaceImage.raycastTarget = false;
 
         toolHintText = RuntimeUiFactory.CreateText(canvas.transform, "Hint", string.Empty, 30, TextAnchor.MiddleCenter, new Color(0.8f, 0.87f, 1f, 1f));
         toolHintText.rectTransform.anchorMin = new Vector2(0.5f, 0f);
@@ -302,7 +367,7 @@ public sealed class GameplayController : MonoBehaviour
             new Vector2(80f, 360f),
             new Color(0.06f, 0.12f, 0.19f, 0.95f)).gameObject;
 
-        var tutorialText = RuntimeUiFactory.CreateText(tutorialCard.transform, "TutorialText", "Tap and drag on the object to remove dirt.", 34, TextAnchor.MiddleCenter, new Color(0.9f, 0.95f, 1f, 1f));
+        var tutorialText = RuntimeUiFactory.CreateText(tutorialCard.transform, "TutorialText", "Tap and drag on the dirty object to clean it.", 34, TextAnchor.MiddleCenter, new Color(0.9f, 0.95f, 1f, 1f));
         tutorialText.rectTransform.anchorMin = Vector2.zero;
         tutorialText.rectTransform.anchorMax = Vector2.one;
         tutorialText.rectTransform.offsetMin = new Vector2(20f, 20f);
@@ -458,30 +523,31 @@ public sealed class GameplayController : MonoBehaviour
         if (changed)
         {
             totalDirt = Mathf.Clamp(totalDirt, 0f, maxDirt);
-            RebuildTexture();
+            RebuildDirtTexture();
             RefreshHud();
         }
     }
 
-    private void RebuildTexture()
+    private void RebuildDirtTexture()
     {
-        for (var i = 0; i < dirtValues.Length; i++)
+        for (var i = 0; i < dirtPixels.Length; i++)
         {
             if (!objectMask[i])
             {
-                pixelCache[i] = new Color(0f, 0f, 0f, 0f);
+                dirtPixels[i] = new Color(0f, 0f, 0f, 0f);
                 continue;
             }
 
-            pixelCache[i] = Color.Lerp(cleanColor, dirtyColor, dirtValues[i]);
+            var baseColor = dirtBasePixels[i];
+            dirtPixels[i] = new Color(baseColor.r, baseColor.g, baseColor.b, baseColor.a * dirtValues[i]);
         }
 
-        dirtTexture.SetPixels(pixelCache);
+        dirtTexture.SetPixels(dirtPixels);
         dirtTexture.Apply(false, false);
 
-        if (cleanSurfaceImage != null)
+        if (dirtSurfaceImage != null)
         {
-            cleanSurfaceImage.texture = dirtTexture;
+            dirtSurfaceImage.texture = dirtTexture;
         }
     }
 
@@ -500,16 +566,16 @@ public sealed class GameplayController : MonoBehaviour
         switch (selectedTool)
         {
             case ToolType.Spray:
-                radiusCells = 9;
-                cleanPerSecond = 0.9f;
+                radiusCells = 10;
+                cleanPerSecond = 2.4f;
                 break;
             case ToolType.Scraper:
-                radiusCells = 4;
-                cleanPerSecond = 2.3f;
+                radiusCells = 5;
+                cleanPerSecond = 4.3f;
                 break;
             default:
-                radiusCells = 6;
-                cleanPerSecond = 1.4f;
+                radiusCells = 7;
+                cleanPerSecond = 3.2f;
                 break;
         }
     }
