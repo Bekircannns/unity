@@ -16,6 +16,7 @@ Assets/StreamingAssets/aa*
 .vs/
 .vscode/
 .idea/
+.vsconfig
 *.csproj
 *.sln
 *.suo
@@ -39,3 +40,6 @@ sysinfo.txt
 *.apk
 *.aab
 *.ipa
+
+# Accidental nested Unity project folder (root project is this repo)
+RestoreRush/
