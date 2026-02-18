@@ -8,12 +8,20 @@ using UnityEngine.InputSystem;
 public sealed class GameplayController : MonoBehaviour
 {
     private const int PercentPermilleScale = 1000;
+    private const float WrongToolTimePenaltySeconds = 0.8f;
 
     private enum ToolType
     {
         Brush,
         Spray,
         Scraper
+    }
+
+    private enum DirtType : byte
+    {
+        Dust = 0,
+        Rust = 1,
+        Paint = 2
     }
 
     [Header("Round")]
@@ -33,6 +41,7 @@ public sealed class GameplayController : MonoBehaviour
 
     private float[] dirtValues;
     private bool[] objectMask;
+    private DirtType[] dirtTypes;
     private Color[] cleanPixels;
     private Color[] dirtBasePixels;
     private Color[] dirtPixels;
@@ -46,6 +55,7 @@ public sealed class GameplayController : MonoBehaviour
     private bool roundEnded;
     private bool pointerWasDown;
     private bool tutorialDismissed;
+    private float wrongToolHintTimer;
 
     private Canvas canvas;
     private Text timeText;
@@ -88,6 +98,11 @@ public sealed class GameplayController : MonoBehaviour
             return;
         }
 
+        if (wrongToolHintTimer > 0f)
+        {
+            wrongToolHintTimer -= Time.deltaTime;
+        }
+
         HandlePointerInput();
 
         if (GetCleanPermille() >= GetTargetPermille())
@@ -125,6 +140,7 @@ public sealed class GameplayController : MonoBehaviour
         var count = gridWidth * gridHeight;
         dirtValues = new float[count];
         objectMask = new bool[count];
+        dirtTypes = new DirtType[count];
         cleanPixels = new Color[count];
         dirtBasePixels = new Color[count];
         dirtPixels = new Color[count];
@@ -143,13 +159,16 @@ public sealed class GameplayController : MonoBehaviour
 
                 if (inObject)
                 {
+                    var dirtType = SelectDirtType(x, y);
+                    dirtTypes[index] = dirtType;
                     dirtValues[index] = 1f;
                     maxDirt += 1f;
                     cleanPixels[index] = BuildCleanPixel(nx, ny, objectStyle);
-                    dirtBasePixels[index] = BuildDirtBasePixel(x, y, objectStyle);
+                    dirtBasePixels[index] = BuildDirtBasePixel(x, y, objectStyle, dirtType);
                 }
                 else
                 {
+                    dirtTypes[index] = DirtType.Dust;
                     dirtValues[index] = 0f;
                     cleanPixels[index] = new Color(0f, 0f, 0f, 0f);
                     dirtBasePixels[index] = new Color(0f, 0f, 0f, 0f);
@@ -257,7 +276,7 @@ public sealed class GameplayController : MonoBehaviour
         return color;
     }
 
-    private static Color BuildDirtBasePixel(int x, int y, RestoreObjectStyle objectStyle)
+    private static Color BuildDirtBasePixel(int x, int y, RestoreObjectStyle objectStyle, DirtType dirtType)
     {
         var noiseA = Mathf.PerlinNoise((x + 13f) * 0.11f, (y + 47f) * 0.11f);
         var noiseB = Mathf.PerlinNoise((x + 5f) * 0.27f, (y + 17f) * 0.27f);
@@ -289,9 +308,48 @@ public sealed class GameplayController : MonoBehaviour
         }
 
         var tone = Color.Lerp(dirtDark, dirtLight, noiseA);
+        tone = ApplyDirtTypeTint(tone, dirtType, noiseB);
         var alpha = Mathf.Lerp(0.76f, 1f, noiseB);
         tone.a = alpha;
         return tone;
+    }
+
+    private DirtType SelectDirtType(int x, int y)
+    {
+        var noise = Mathf.PerlinNoise((x + (currentLevelIndex * 31)) * 0.09f, (y + (currentLevelIndex * 19)) * 0.09f);
+        var rustThreshold = Mathf.Lerp(0.36f, 0.30f, currentLevelIndex / 4f);
+        var paintThreshold = Mathf.Lerp(0.72f, 0.64f, currentLevelIndex / 4f);
+
+        if (noise < rustThreshold)
+        {
+            return DirtType.Dust;
+        }
+
+        if (noise < paintThreshold)
+        {
+            return DirtType.Rust;
+        }
+
+        return DirtType.Paint;
+    }
+
+    private static Color ApplyDirtTypeTint(Color baseColor, DirtType dirtType, float noise)
+    {
+        Color tint;
+        switch (dirtType)
+        {
+            case DirtType.Rust:
+                tint = new Color(0.62f, 0.35f, 0.2f, 1f);
+                break;
+            case DirtType.Paint:
+                tint = new Color(0.33f, 0.43f, 0.64f, 1f);
+                break;
+            default:
+                tint = new Color(0.52f, 0.48f, 0.42f, 1f);
+                break;
+        }
+
+        return Color.Lerp(baseColor, tint, Mathf.Lerp(0.38f, 0.62f, noise));
     }
 
     private void BuildUi()
@@ -455,6 +513,12 @@ public sealed class GameplayController : MonoBehaviour
         toolHintText.rectTransform.sizeDelta = new Vector2(900f, 44f);
         toolHintText.rectTransform.anchoredPosition = new Vector2(80f, 530f);
 
+        var ruleText = RuntimeUiFactory.CreateText(canvas.transform, "Rules", "Dust=Brush | Rust=Scraper | Paint=Spray", 26, TextAnchor.MiddleCenter, new Color(0.72f, 0.82f, 0.95f, 1f));
+        ruleText.rectTransform.anchorMin = new Vector2(0.5f, 0f);
+        ruleText.rectTransform.anchorMax = new Vector2(0.5f, 0f);
+        ruleText.rectTransform.sizeDelta = new Vector2(980f, 40f);
+        ruleText.rectTransform.anchoredPosition = new Vector2(80f, 490f);
+
         tutorialCard = RuntimeUiFactory.CreatePanel(
             canvas.transform,
             "TutorialCard",
@@ -496,7 +560,7 @@ public sealed class GameplayController : MonoBehaviour
 
     private void RefreshToolVisuals()
     {
-        var selectedColor = new Color(0.2f, 0.44f, 0.76f, 1f);
+        var selectedColor = new Color(0.18f, 0.58f, 0.86f, 1f);
         var normalColor = new Color(0.11f, 0.16f, 0.25f, 0.95f);
 
         brushButtonImage.color = selectedTool == ToolType.Brush ? selectedColor : normalColor;
@@ -506,14 +570,19 @@ public sealed class GameplayController : MonoBehaviour
 
     private string GetToolHint(ToolType tool)
     {
+        if (wrongToolHintTimer > 0f)
+        {
+            return "Wrong tool used: -0.8s";
+        }
+
         switch (tool)
         {
             case ToolType.Spray:
-                return "Spray: wide area, lower power";
+                return "Spray: strongest on PAINT";
             case ToolType.Scraper:
-                return "Scraper: small area, high power";
+                return "Scraper: strongest on RUST";
             default:
-                return "Brush: balanced area and power";
+                return "Brush: strongest on DUST";
         }
     }
 
@@ -529,6 +598,7 @@ public sealed class GameplayController : MonoBehaviour
         if (pointerBegan && pointerInside)
         {
             strokeCount++;
+            ApplyWrongToolPenalty(pointerScreen);
             if (!tutorialDismissed)
             {
                 tutorialDismissed = true;
@@ -556,16 +626,10 @@ public sealed class GameplayController : MonoBehaviour
 
     private void ApplyCleaning(Vector2 pointerScreen)
     {
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(cleanSurfaceRect, pointerScreen, null, out var localPoint))
+        if (!TryGetGridCoordinates(pointerScreen, out var centerX, out var centerY))
         {
             return;
         }
-
-        var rect = cleanSurfaceRect.rect;
-        var localX = Mathf.InverseLerp(rect.xMin, rect.xMax, localPoint.x);
-        var localY = Mathf.InverseLerp(rect.yMin, rect.yMax, localPoint.y);
-        var centerX = Mathf.RoundToInt(localX * (gridWidth - 1));
-        var centerY = Mathf.RoundToInt(localY * (gridHeight - 1));
 
         GetToolSettings(out var radiusCells, out var cleanPerSecond);
         var cleanPower = cleanPerSecond * Time.deltaTime;
@@ -605,8 +669,9 @@ public sealed class GameplayController : MonoBehaviour
                     continue;
                 }
 
+                var effectiveness = GetToolEffectiveness(selectedTool, dirtTypes[index]);
                 var falloff = 1f - (Mathf.Sqrt(distSquared) / radiusCells);
-                var newDirt = Mathf.Max(0f, oldDirt - (cleanPower * Mathf.Max(0.2f, falloff)));
+                var newDirt = Mathf.Max(0f, oldDirt - (cleanPower * effectiveness * Mathf.Max(0.2f, falloff)));
                 if (newDirt >= oldDirt)
                 {
                     continue;
@@ -624,6 +689,85 @@ public sealed class GameplayController : MonoBehaviour
             RebuildDirtTexture();
             RefreshHud();
         }
+    }
+
+    private void ApplyWrongToolPenalty(Vector2 pointerScreen)
+    {
+        if (!TryGetGridCoordinates(pointerScreen, out var centerX, out var centerY))
+        {
+            return;
+        }
+
+        var index = centerY * gridWidth + centerX;
+        if (index < 0 || index >= dirtValues.Length || !objectMask[index])
+        {
+            return;
+        }
+
+        if (dirtValues[index] <= 0.03f)
+        {
+            return;
+        }
+
+        if (GetToolEffectiveness(selectedTool, dirtTypes[index]) >= 1f)
+        {
+            return;
+        }
+
+        timeLeft = Mathf.Max(0f, timeLeft - WrongToolTimePenaltySeconds);
+        wrongToolHintTimer = 1.15f;
+    }
+
+    private bool TryGetGridCoordinates(Vector2 pointerScreen, out int centerX, out int centerY)
+    {
+        centerX = 0;
+        centerY = 0;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(cleanSurfaceRect, pointerScreen, null, out var localPoint))
+        {
+            return false;
+        }
+
+        var rect = cleanSurfaceRect.rect;
+        var localX = Mathf.InverseLerp(rect.xMin, rect.xMax, localPoint.x);
+        var localY = Mathf.InverseLerp(rect.yMin, rect.yMax, localPoint.y);
+        centerX = Mathf.Clamp(Mathf.RoundToInt(localX * (gridWidth - 1)), 0, gridWidth - 1);
+        centerY = Mathf.Clamp(Mathf.RoundToInt(localY * (gridHeight - 1)), 0, gridHeight - 1);
+        return true;
+    }
+
+    private static float GetToolEffectiveness(ToolType tool, DirtType dirtType)
+    {
+        if (tool == ToolType.Brush && dirtType == DirtType.Dust)
+        {
+            return 1.35f;
+        }
+
+        if (tool == ToolType.Scraper && dirtType == DirtType.Rust)
+        {
+            return 1.45f;
+        }
+
+        if (tool == ToolType.Spray && dirtType == DirtType.Paint)
+        {
+            return 1.35f;
+        }
+
+        if (tool == ToolType.Brush && dirtType == DirtType.Paint)
+        {
+            return 0.7f;
+        }
+
+        if (tool == ToolType.Scraper && dirtType == DirtType.Dust)
+        {
+            return 0.7f;
+        }
+
+        if (tool == ToolType.Spray && dirtType == DirtType.Rust)
+        {
+            return 0.7f;
+        }
+
+        return 0.45f;
     }
 
     private void RebuildDirtTexture()
