@@ -71,6 +71,17 @@ public static class RuntimeUiFactory
         return text;
     }
 
+    public static Image CreateImage(Transform parent, string name, Sprite sprite, Color color, bool preserveAspect = true)
+    {
+        var imageObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+        imageObject.transform.SetParent(parent, false);
+        var image = imageObject.GetComponent<Image>();
+        image.sprite = sprite;
+        image.color = color;
+        image.preserveAspect = preserveAspect;
+        return image;
+    }
+
     public static Button CreateButton(Transform parent, string name, string label, UnityAction onClick)
     {
         var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));

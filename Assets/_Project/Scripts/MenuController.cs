@@ -65,6 +65,17 @@ public sealed class MenuController : MonoBehaviour
         subtitle.rectTransform.sizeDelta = new Vector2(-48f, 70f);
         subtitle.rectTransform.anchoredPosition = new Vector2(0f, -120f);
 
+        var logoSprite = Resources.Load<Sprite>("UI/logo_puzzle");
+        if (logoSprite != null)
+        {
+            var logoImage = RuntimeUiFactory.CreateImage(card, "Logo", logoSprite, Color.white);
+            var logoRect = logoImage.rectTransform;
+            logoRect.anchorMin = new Vector2(1f, 1f);
+            logoRect.anchorMax = new Vector2(1f, 1f);
+            logoRect.sizeDelta = new Vector2(136f, 136f);
+            logoRect.anchoredPosition = new Vector2(-90f, -86f);
+        }
+
         progressText = RuntimeUiFactory.CreateText(card, "Progress", string.Empty, 28, TextAnchor.UpperCenter, new Color(0.79f, 0.86f, 0.97f, 1f));
         progressText.rectTransform.anchorMin = new Vector2(0f, 1f);
         progressText.rectTransform.anchorMax = new Vector2(1f, 1f);
