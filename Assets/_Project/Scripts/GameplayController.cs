@@ -62,6 +62,7 @@ public sealed class GameplayController : MonoBehaviour
     private Text progressText;
     private Text strokesText;
     private Text toolHintText;
+    private Text dirtTypeText;
     private RawImage cleanSurfaceImage;
     private RawImage dirtSurfaceImage;
     private RectTransform cleanSurfaceRect;
@@ -339,17 +340,17 @@ public sealed class GameplayController : MonoBehaviour
         switch (dirtType)
         {
             case DirtType.Rust:
-                tint = new Color(0.62f, 0.35f, 0.2f, 1f);
+                tint = new Color(0.76f, 0.34f, 0.18f, 1f);
                 break;
             case DirtType.Paint:
-                tint = new Color(0.33f, 0.43f, 0.64f, 1f);
+                tint = new Color(0.35f, 0.5f, 0.82f, 1f);
                 break;
             default:
-                tint = new Color(0.52f, 0.48f, 0.42f, 1f);
+                tint = new Color(0.62f, 0.56f, 0.46f, 1f);
                 break;
         }
 
-        return Color.Lerp(baseColor, tint, Mathf.Lerp(0.38f, 0.62f, noise));
+        return Color.Lerp(baseColor, tint, Mathf.Lerp(0.58f, 0.85f, noise));
     }
 
     private void BuildUi()
@@ -519,6 +520,12 @@ public sealed class GameplayController : MonoBehaviour
         ruleText.rectTransform.sizeDelta = new Vector2(980f, 40f);
         ruleText.rectTransform.anchoredPosition = new Vector2(80f, 490f);
 
+        dirtTypeText = RuntimeUiFactory.CreateText(canvas.transform, "DirtTypeHint", "Under Cursor: -", 24, TextAnchor.MiddleCenter, new Color(0.92f, 0.96f, 1f, 1f));
+        dirtTypeText.rectTransform.anchorMin = new Vector2(0.5f, 0f);
+        dirtTypeText.rectTransform.anchorMax = new Vector2(0.5f, 0f);
+        dirtTypeText.rectTransform.sizeDelta = new Vector2(980f, 36f);
+        dirtTypeText.rectTransform.anchoredPosition = new Vector2(80f, 454f);
+
         tutorialCard = RuntimeUiFactory.CreatePanel(
             canvas.transform,
             "TutorialCard",
@@ -591,6 +598,10 @@ public sealed class GameplayController : MonoBehaviour
         if (!TryGetPointer(out var pointerScreen, out var pointerDown, out var pointerBegan))
         {
             pointerWasDown = false;
+            if (dirtTypeText != null)
+            {
+                dirtTypeText.text = "Under Cursor: -";
+            }
             return;
         }
 
@@ -613,8 +624,11 @@ public sealed class GameplayController : MonoBehaviour
         else if (pointerDown && !pointerWasDown && pointerInside)
         {
             strokeCount++;
+            ApplyWrongToolPenalty(pointerScreen);
             RefreshHud();
         }
+
+        UpdateDirtTypeHint(pointerInside, pointerScreen);
 
         if (pointerDown && pointerInside)
         {
@@ -718,6 +732,33 @@ public sealed class GameplayController : MonoBehaviour
         wrongToolHintTimer = 1.15f;
     }
 
+    private void UpdateDirtTypeHint(bool pointerInside, Vector2 pointerScreen)
+    {
+        if (dirtTypeText == null)
+        {
+            return;
+        }
+
+        if (!pointerInside || !TryGetGridCoordinates(pointerScreen, out var centerX, out var centerY))
+        {
+            dirtTypeText.text = "Under Cursor: -";
+            return;
+        }
+
+        var index = centerY * gridWidth + centerX;
+        if (index < 0 || index >= dirtTypes.Length || !objectMask[index] || dirtValues[index] <= 0.03f)
+        {
+            dirtTypeText.text = "Under Cursor: clean area";
+            return;
+        }
+
+        var dirtType = dirtTypes[index];
+        var bestTool = GetBestTool(dirtType);
+        var multiplier = GetToolEffectiveness(selectedTool, dirtType);
+        var state = selectedTool == bestTool ? "correct" : "wrong";
+        dirtTypeText.text = $"Under Cursor: {GetDirtTypeLabel(dirtType)} | Best: {bestTool} | Current: {selectedTool} ({state} x{multiplier:0.00})";
+    }
+
     private bool TryGetGridCoordinates(Vector2 pointerScreen, out int centerX, out int centerY)
     {
         centerX = 0;
@@ -739,35 +780,61 @@ public sealed class GameplayController : MonoBehaviour
     {
         if (tool == ToolType.Brush && dirtType == DirtType.Dust)
         {
-            return 1.35f;
+            return 1.8f;
         }
 
         if (tool == ToolType.Scraper && dirtType == DirtType.Rust)
         {
-            return 1.45f;
+            return 1.9f;
         }
 
         if (tool == ToolType.Spray && dirtType == DirtType.Paint)
         {
-            return 1.35f;
+            return 1.7f;
         }
 
         if (tool == ToolType.Brush && dirtType == DirtType.Paint)
         {
-            return 0.7f;
+            return 0.55f;
         }
 
         if (tool == ToolType.Scraper && dirtType == DirtType.Dust)
         {
-            return 0.7f;
+            return 0.55f;
         }
 
         if (tool == ToolType.Spray && dirtType == DirtType.Rust)
         {
-            return 0.7f;
+            return 0.55f;
         }
 
-        return 0.45f;
+        return 0.22f;
+    }
+
+    private static ToolType GetBestTool(DirtType dirtType)
+    {
+        switch (dirtType)
+        {
+            case DirtType.Rust:
+                return ToolType.Scraper;
+            case DirtType.Paint:
+                return ToolType.Spray;
+            default:
+                return ToolType.Brush;
+        }
+    }
+
+    private static string GetDirtTypeLabel(DirtType dirtType)
+    {
+        switch (dirtType)
+        {
+            case DirtType.Rust:
+                return "Rust";
+            case DirtType.Paint:
+                return "Paint";
+            default:
+                return "Dust";
+        }
     }
 
     private void RebuildDirtTexture()
